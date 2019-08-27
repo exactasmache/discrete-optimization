@@ -60,17 +60,17 @@ def fill_knapsack_dinamically(items, capacity):
     # Remember that in math notation the first index of a matrix 
     # indicates the row, and the second indicates the column.
 
-    taken = [0 for j in range(len(items))]
-    values_table = [[0 for j in range(len(items)+1)] for i in range(capacity)]
-    weights_table = [[0 for j in range(len(items)+1)] for i in range(capacity)]
+    taken = [0 for j in xrange(len(items))]
+    values_table = [[0 for j in xrange(len(items)+1)] for i in xrange(capacity)]
+    weights_table = [[0 for j in xrange(len(items)+1)] for i in xrange(capacity)]
 
     # for each item
-    for i in range(1, len(items)+1):
+    for i in xrange(1, len(items)+1):
       item_idx = i - 1
       item = items[item_idx]
       
       # for each capacity
-      for c in range(1, capacity+1):
+      for c in xrange(1, capacity+1):
         c_idx = c-1
         
         # if the element doesn't fit into the knapsack
@@ -100,18 +100,33 @@ def fill_knapsack_dinamically(items, capacity):
             weights_table[c_idx][i] = weights_table[c_idx][i-1]
 
     # For Debug purposes
-    print 'cap\t', [(i.weight, i.value) for i in items]
-    for j in range(capacity):
-      print j+1, '\t',
-      for i in range(len(items)+1):
-        print values_table[j][i], '\t',
-      print
+    # print 'cap\t', [(i.weight, i.value) for i in items]
+    # for j in xrange(capacity):
+    #   print j+1, '\t',
+    #   for i in xrange(len(items)+1):
+    #     print values_table[j][i], '\t',
+    #   print
 
-    value = values_table[capacity-1][len(items)]
+    # Calculating the results
+    max_c = capacity - 1
+    max_i = len(items)
+    max_value = values_table[max_c][max_i]
+    max_weight = weights_table[max_c][max_i]
     optimal = 1
-    # weight = weights_table[capacity-1][len(items)]
+    i = max_i
+    c = max_c
+    while i >= 0:
+      while c >= 0:
+        if values_table[c][i] != values_table[c][i-1]:
+            taken[i-1] = 1
+            c -= items[i-1].weight
+        break
+      i -= 1
+
+    print sum([items[t].weight for t in taken if t == 1])
+
     
-    return value, taken, optimal
+    return max_value, taken, optimal
 
 def solve_it(input_data):
     # parse the input
@@ -124,7 +139,7 @@ def solve_it(input_data):
     items = []
 
     # We could sort the array here to improve computational average times but it is the same in terms of complexity.
-    for i in range(1, item_count+1):
+    for i in xrange(1, item_count+1):
         line = lines[i]
         parts = line.split()
         items.append(Item(i-1, int(parts[0]), int(parts[1]), float(parts[0])/int(parts[1])))
