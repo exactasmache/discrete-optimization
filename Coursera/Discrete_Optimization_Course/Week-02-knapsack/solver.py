@@ -54,23 +54,62 @@ def fill_knapsack_dinamically(items, capacity):
 
     # I need to fill the table recording the values I used in each column
     # For each item I have to decide for each capacity if I put it into the knapsack or not.
-    # If I do, I have to increment the value of all the elements of the column,
+    # To decide that, I need to take a look at two cells: the left one, and the one located 
+    # in the left column but size(i) rows up
 
-    capacities_items_table = []
-    for item in items:
-      print item
+    # Remember that in math notation the first index of a matrix 
+    # indicates the row, and the second indicates the column.
 
+    taken = [0 for j in range(len(items))]
+    values_table = [[0 for j in range(len(items)+1)] for i in range(capacity)]
+    weights_table = [[0 for j in range(len(items)+1)] for i in range(capacity)]
 
-    value = 0
-    optimal = 0
-    weight = 0
-    taken = [0]*len(items)
-    
-    for item in items:
-        if weight + item.weight <= capacity:
-            taken[item.index] = 1
-            value += item.value
-            weight += item.weight
+    # for each item
+    for i in range(1, len(items)+1):
+      item_idx = i - 1
+      item = items[item_idx]
+      
+      # for each capacity
+      for c in range(1, capacity+1):
+        c_idx = c-1
+        
+        # if the element doesn't fit into the knapsack
+        if item.weight > c:
+          values_table[c_idx][i] = values_table[c_idx][i-1]
+          weights_table[c_idx][i] = weights_table[c_idx][i-1]
+        
+        # if there is space to put the element in the knapsack without modifying its items:
+        elif c - weights_table[c_idx][i-1] >= item.weight:
+            values_table[c_idx][i] = values_table[c_idx][i-1] + item.value
+            weights_table[c_idx][i] = weights_table[c_idx][i-1] + item.weight
+        
+        #  if I can get a big value removing elements that allow me to put the actual
+        else:
+          if c_idx-item.weight <= 0:
+            last_value = 0
+            last_weight = 0
+          else: 
+            last_value = values_table[c_idx-item.weight][i-1]
+            last_weight = weights_table[c_idx-item.weight][i-1]
+          
+          if values_table[c_idx][i-1] < last_value + item.value:
+            values_table[c_idx][i] = last_value + item.value
+            weights_table[c_idx][i] = last_weight + item.weight
+          else:
+            values_table[c_idx][i] = values_table[c_idx][i-1]
+            weights_table[c_idx][i] = weights_table[c_idx][i-1]
+
+    # For Debug purposes
+    print 'cap\t', [(i.weight, i.value) for i in items]
+    for j in range(capacity):
+      print j+1, '\t',
+      for i in range(len(items)+1):
+        print values_table[j][i], '\t',
+      print
+
+    value = values_table[capacity-1][len(items)]
+    optimal = 1
+    # weight = weights_table[capacity-1][len(items)]
     
     return value, taken, optimal
 
