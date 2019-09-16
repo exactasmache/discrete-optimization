@@ -1,6 +1,11 @@
+# CUSTOM IGNORINGS
 #Mac files
 *.DS_Store
 
+#Data
+data/
+
+# OFFICIAL INGORINGS
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
