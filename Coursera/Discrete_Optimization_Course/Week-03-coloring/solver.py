@@ -3,66 +3,108 @@
 import os
 from ortools.sat.python import cp_model
 
-# SOLVERS:
-def solve(edges, node_count, model):
+class StoreBestObjectiveSolution(cp_model.CpSolverSolutionCallback):
+    """Store best intermediate solution."""
+  
+    def __init__(self, variables):
+        cp_model.CpSolverSolutionCallback.__init__(self)
+        self.__variables = variables['c']
+        self.__best_objective = None
+        self.__best_solution = None
+
+    def on_solution_callback(self):
+        if self.__best_objective == None or self.ObjectiveValue() > self.__best_objective:
+            self.__best_objective = self.ObjectiveValue()
+            self.__best_solution = [self.Value(v) for v in self.__variables]
+
+    def get_best_solution(self):
+        return {
+          'obj': self.__best_objective, 
+          'values': self.__best_solution
+        }
+
+
+def solve(model, variables, max_time=60.0):
     solver = cp_model.CpSolver()
-    status = solver.Solve(model)
+    solver.parameters.max_time_in_seconds = max_time
+    solution = StoreBestObjectiveSolution(variables)
 
-    print('Solve status: %s' % solver.StatusName(status))
+    status = solver.SolveWithSolutionCallback(model, solution)
+
     if status == cp_model.OPTIMAL:
-      print('Optimal objective value: %i' % solver.ObjectiveValue())
-    
-    print('Statistics')
-    print('  - conflicts : %i' % solver.NumConflicts())
-    print('  - branches  : %i' % solver.NumBranches())
-    print('  - wall time : %f s' % solver.WallTime())
-    # build a trivial solution
-    # every node has its own color
-    return range(0, node_count)
+        return {
+          'obj': solver.ObjectiveValue(),
+          'values': [ solver.Value(v) for v in variables['c']]
+        }, 1
+    else:
+        return solution.get_best_solution(), 0
 
-def get_colors_upper_bound(edges, n):
-    # I can use the max degree.
-    return n
+def get_grades(edges, n):
+    grade = [0 for v in range(n)]
+    for i,j in edges:
+        grade[i] += 1
+        grade[j] += 1
+    return grade
 
-def make_model(edges, n):
+def get_unconnected_nodes(G):
+    return [n for n in G['N'] if G['g:N->int'][n] == 0]
+
+def get_leaves(G):
+    return [n for n in G['N'] if G['g:N->int'][n] == 1]
+
+def find_cliques():
+    return
+
+
+def make_model(G):
+    edges = G['E']
+    nodes = G['N']
+    grades = G['g:N->int']
+
+    n = len(nodes)
+
     # Model definition
     model = cp_model.CpModel()
     
+    # Domains
+    unconnected = get_unconnected_nodes(G)
+    leaves = get_leaves(G)
+
     # Upper bound
-    colors_upper_bound = get_colors_upper_bound(edges, n)
-    
+    UPPER = max(grades)-1
+    u_bs = [0 if i in unconnected else (1 if i in leaves else UPPER) for i in nodes]
+    obj_bound = max(u_bs)
+
+    print(u_bs)
     # Variables: 
-    # c_i = 3 iff the color 3 is assigned to the node i
-    c = [ model.NewIntVar(0, colors_upper_bound-1, 
-         'c_{}'.format(i)) for i in range(n)]
-    # u_i = 1 iff the color i is used 
-    # u = [ model.NewBoolVar('u_{}'.format(i)) 
-    #       for i in range(colors_upper_bound)]
+    # c_i = j iff the color j is assigned to the node i
+    c = [ model.NewIntVar(0, u_bs[i], 
+         'c_{}'.format(i)) for i in nodes]
     
-    target = model.NewIntVar(0, colors_upper_bound, 'obj')
-    
+    # target is the objective function
+    target = model.NewIntVar(0, obj_bound, 'obj')
+
     # Constraints: 
     # c_i != c_j for every ij in E
     for i,j in edges:
       model.Add(c[i] != c[j])
     
+    # target = max(c_i)
     model.AddMaxEquality(target, c)
-    # u_i <= sum() #TODO
-    # for i in range(colors_upper_bound):
-    #   model.Add(c>0).OnlyEnforceIf(u[i])
-    #   model.Add(c>0).OnlyEnforceIf(u[i].Not())
+    
+
+    # Objective function: minimize max(c)
+    model.Minimize(target+1)
+
+    return model, {'c': c, 'obj': target}
 
 
-    # Objective function: minimize sum(u)
-    # model.Minimize(sum(u))
-    model.Minimize(target)
-    return model
-
-def prepare_return_data(solution, node_count, optimal=0):
+def prepare_return_data(solution, optimal=0):
     # prepare the solution in the specified output format
-    output_data = str(node_count) + ' ' + str(optimal) + '\n'
-    output_data += ' '.join(map(str, solution))
+    output_data = str(int(solution['obj'])) + ' ' + str(optimal) + '\n'
+    output_data += ' '.join(map(str, solution['values']))
     return output_data
+
 
 def solve_it(input_data):
     # Modify this code to run your optimization algorithm
@@ -79,12 +121,17 @@ def solve_it(input_data):
         line = lines[i]
         parts = line.split()
         edges.append((int(parts[0]), int(parts[1])))
-
-    model = make_model(edges, node_count)
     
-    solution = solve(model, edges, node_count)
+    G = {
+      'N': range(node_count),
+      'E': edges,
+      'g:N->int': get_grades(edges, node_count)
+    }
+    model, variables = make_model(G)
+    
+    solution, optimal = solve(model, variables)
 
-    return prepare_return_data(solution, node_count)
+    return prepare_return_data(solution, optimal)
 
 
 import sys
