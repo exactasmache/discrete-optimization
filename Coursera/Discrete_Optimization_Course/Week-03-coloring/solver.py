@@ -77,8 +77,8 @@ def get_a_k_grade_clique(G, k):
     for i in range(len(possibles)):
         for n in G['N()'][possibles[i]]:
             if n not in possibles:
-
-      
+              pass
+    return []
 
 
 def make_model(G):
