@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import math
-from pyscipopt import Model
+import cplex
+import cplex.callbacks as cpx_cb
+from docplex.mp.model import Model
 
 from collections import namedtuple
 
@@ -10,75 +12,80 @@ Point = namedtuple("Point", ['x', 'y'])
 Facility = namedtuple("Facility", ['index', 'setup_cost', 'capacity', 'location'])
 Customer = namedtuple("Customer", ['index', 'demand', 'location'])
 
-def get_solution(model, var):
+def get_solution(cpx):
     print('solving')
-    model.optimize()
+    # print(cpx.problem_type[cpx.get_problem_type()])
+    cpx.write('facility_model.lp', filetype='lp')
+    # cpx.set_results_stream('output', fn=None)
 
-    print(model.getVars(var['ywc']))
+    cpx.parameters.tune.timelimit.set(2)
 
-    return
+    cpx.solve()
+    
+    optimal = False
+    obj = None
+    values = None
+    
+    status = cpx.solution.get_status_string()
+    if status == 'integer optimal solution':
+      optimal = True
+      obj = cpx.solution.get_objective_value()
+      y_values = cpx.solution.get_values()
+    else:
+      optimal = False
+      obj = cpx.solution.MIP.get_best_objective()
+      values = [] #TODO
+    
+    return obj, values
 
 def length(point1, point2):
     ''' Returns the euclidean distance between two points'''
     return math.sqrt((point1.x - point2.x)**2 + (point1.y - point2.y)**2)
 
-def build_distances_matrix(facilities, customers):
-    d_m = [
-      [ length(c.location, w.location) for w in facilities ]
-      for c in customers
-    ]
-    # returns a matrix indexed like this:
-    # d_m(c, w)
-    return d_m
+def build_model(facilities, customers):
+    xw = ['x{}'.format(w.index) for w in facilities]
+    ywc = ['y{}{}'.format(w.index, c.index) for w in facilities for c in customers]
 
-def build_model(facilities, customers, d_m):
-    print(d_m)
-    model = Model('Facility')
+    cpx = cplex.Cplex()
+    cpx.set_problem_name('Facility')
 
-    xw = [ 
-        model.addVar('x{}'.format(w.index), 
-        vtype='BINARY') 
-        for w in facilities
-    ]
+    cpx.variables.add(
+        names = xw+ywc, 
+        types=[cpx.variables.type.binary] * (len(xw)+len(ywc))
+    )
+
+    for c in customers:
+        ind = ['y{}{}'.format(w.index, c.index) for w in facilities]
+        names = ['C_{}'.format(c.index)]
+        val = [1.0] * len(facilities)
+        rhs = [1.0]
+        senses = ['E']
+        cpx.linear_constraints.add(
+            lin_expr = [ cplex.SparsePair(ind=ind, val=val) ],
+            senses = senses,
+            rhs = rhs,
+            names = names,
+        )
+
+        names = ['W_{}{}'.format(c.index, w.index) for w in facilities]
+        senses = ['L'] * len(facilities)
+        rhs = [0.0] * len(facilities)
+        lin_exp = [ 
+            cplex.SparsePair(
+                ind=[ 'y{0}{1}'.format(w.index, c.index), 
+                      'x{0}'.format(w.index)], 
+                val=[1, -1]
+            ) for w in facilities 
+        ]
+
+        cpx.linear_constraints.add(
+            lin_expr = lin_exp,
+            senses = senses,
+            rhs = rhs,
+            names = names,
+        )
     
-    ywc = [
-        [model.addVar('y{}{}'.format(w.index, c.index), 
-        vtype='BINARY')
-        for w in facilities] for c in customers
-    ]
-    for c in ywc:
-        model.addCons(sum(c)==1)
-
-        for w in facilities:
-          model.addCons(c[w.index]<=xw[w.index])
-
-    l_w = len(facilities)
-    l_c = len(customers)
-
-    # TODO: Add constraints to dont allow to overhead the facility capacity
-    # Facility = namedtuple("Facility", ['index', 'setup_cost', 'capacity', 'location'])
-    # Customer = namedtuple("Customer", ['index', 'demand', 'location'])
-
-
-    # [ (d, ywc), ... ]
-    obj_1 = [
-        ( d_m[c_id][w_id], ywc[c_id][w_id] ) 
-        for c_id in range(l_c) for w_id in range(l_w)
-    ]
-
-    obj_2 = [ 
-        ( facilities[w_id].setup_cost, xw[w_id] ) 
-        for w_id in range(l_w)
-    ]
-    print(obj_2)
-
-
-    model.setObjective(sum([o[0]*o[1] for o in obj_1+obj_2]),
-        sense = 'minimize',
-        clear = 'true' 
-    )	
-    model.writeProblem('facility_model.lp')
-    return model, {'xw': xw, 'ywc':ywc}
+    return cpx
 
 def solve_it(input_data):
     # parse the input
@@ -98,9 +105,8 @@ def solve_it(input_data):
         parts = lines[i].split()
         customers.append(Customer(i-1-facility_count, int(parts[0]), Point(float(parts[1]), float(parts[2]))))
 
-    d_m = build_distances_matrix(facilities, customers)
-    facility_m, variables = build_model(facilities, customers, d_m)
-    get_solution(facility_m, variables)
+    facility_m = build_model(facilities, customers)
+    get_solution(facility_m)
 
     # build a trivial solution
     # pack the facilities one by one until all the customers are served
