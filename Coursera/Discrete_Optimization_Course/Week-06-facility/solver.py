@@ -1,19 +1,75 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from collections import namedtuple
 import math
+import cplex
+import cplex.callbacks as cpx_cb
+from docplex.mp.model import Model
+
+from collections import namedtuple
 
 Point = namedtuple("Point", ['x', 'y'])
 Facility = namedtuple("Facility", ['index', 'setup_cost', 'capacity', 'location'])
 Customer = namedtuple("Customer", ['index', 'demand', 'location'])
 
+def get_solution(cpx):
+    # print(cpx.problem_type[cpx.get_problem_type()])
+    cpx.write('facility_model.lp', filetype='lp')
+    cpx.set_results_stream('output', fn=None)
+    cpx.solve()
+    print(cpx.solution.get_status())
+    return
+
 def length(point1, point2):
+    ''' Returns the euclidean distance between two points'''
     return math.sqrt((point1.x - point2.x)**2 + (point1.y - point2.y)**2)
 
-def solve_it(input_data):
-    # Modify this code to run your optimization algorithm
+def build_model(facilities, customers):
+    xw = ['x{}'.format(w.index) for w in facilities]
+    ywc = ['y{}{}'.format(w.index, c.index) for w in facilities for c in customers]
+    
+    cpx = cplex.Cplex()
+    cpx.set_problem_name('Facility')
 
+    cpx.variables.add(
+        names = xw+ywc, 
+        types=[cpx.variables.type.binary] * (len(xw)+len(ywc))
+    )
+
+    for c in customers:
+        ind = ['y{}{}'.format(w.index, c.index) for w in facilities]
+        names = ['C_{}'.format(c.index)]
+        val = [1.0] * len(facilities)
+        rhs = [1.0]
+        senses = ['E']
+        cpx.linear_constraints.add(
+            lin_expr = [ cplex.SparsePair(ind=ind, val=val) ],
+            senses = senses,
+            rhs = rhs,
+            names = names,
+        )
+        
+        names = ['W_{}{}'.format(c.index, w.index) for w in facilities]
+        senses = ['L'] * len(facilities)
+        rhs = [0.0] * len(facilities)
+        lin_exp = [ 
+            cplex.SparsePair(
+                ind=[ 'y{0}{1}'.format(w.index, c.index), 
+                      'x{0}'.format(w.index)], 
+                val=[1, -1]
+            ) for w in facilities 
+        ]
+
+        cpx.linear_constraints.add(
+            lin_expr = lin_exp,
+            senses = senses,
+            rhs = rhs,
+            names = names,
+        )
+    
+    return cpx
+
+def solve_it(input_data):
     # parse the input
     lines = input_data.split('\n')
 
@@ -30,6 +86,9 @@ def solve_it(input_data):
     for i in range(facility_count+1, facility_count+1+customer_count):
         parts = lines[i].split()
         customers.append(Customer(i-1-facility_count, int(parts[0]), Point(float(parts[1]), float(parts[2]))))
+
+    facility_m = build_model(facilities, customers)
+    get_solution(facility_m)
 
     # build a trivial solution
     # pack the facilities one by one until all the customers are served
