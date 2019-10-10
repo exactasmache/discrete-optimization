@@ -6,17 +6,41 @@ from pyscipopt import Model
 
 from collections import namedtuple
 
+SCIP_STATUS_OPTIMAL = 'optimal'
+SCIP_STATUS_TIMELIMIT = 'timelimit'
+SCIP_STATUS_INFEASIBLE = 'infeasible'
+SCIP_STATUS_UNBOUNDED = 'unbounded'
+
 Point = namedtuple("Point", ['x', 'y'])
 Facility = namedtuple("Facility", ['index', 'setup_cost', 'capacity', 'location'])
 Customer = namedtuple("Customer", ['index', 'demand', 'location'])
 
-def get_solution(model, var):
-    print('solving')
+def get_solution(facilities, customers, model, vars):
+    obj = None
+    solution = None
+    optimal = 0
+
+    model.hideOutput() # silent/verbose mode
+    model.setRealParam('limits/time', 10)
+    # model.writeProblem('facility_model.lp')
     model.optimize()
+    
+    status = model.getStatus()
 
-    print(model.getVars(var['ywc']))
+    if status == SCIP_STATUS_OPTIMAL:
+        optimal = 1 
+    
+    if status == SCIP_STATUS_OPTIMAL or status == SCIP_STATUS_TIMELIMIT:
+        obj = model.getObjVal()
+        best_solution = model.getBestSol()
+        solution = [-1] * len(customers)
+        for c in customers:
+          for w in facilities:
+              ywc = vars['ywc'][c.index][w.index]
+              if best_solution[ywc] == 1:
+                  solution[c.index] = w.index
 
-    return
+    return obj, solution, optimal
 
 def length(point1, point2):
     ''' Returns the euclidean distance between two points'''
@@ -27,12 +51,11 @@ def build_distances_matrix(facilities, customers):
       [ length(c.location, w.location) for w in facilities ]
       for c in customers
     ]
-    # returns a matrix indexed like this:
+    # it returns a matrix to be indexed as:
     # d_m(c, w)
     return d_m
 
 def build_model(facilities, customers, d_m):
-    print(d_m)
     model = Model('Facility')
 
     xw = [ 
@@ -55,32 +78,33 @@ def build_model(facilities, customers, d_m):
     l_w = len(facilities)
     l_c = len(customers)
 
-    # TODO: Add constraints to dont allow to overhead the facility capacity
-    # Facility = namedtuple("Facility", ['index', 'setup_cost', 'capacity', 'location'])
-    # Customer = namedtuple("Customer", ['index', 'demand', 'location'])
-
+    # Not allow overheading the facility capacity
+    for w in facilities:
+        cw = w.capacity
+        cons = [
+            (customers[c.index].demand, ywc[c.index][w.index])
+            for c in customers
+        ]
+        model.addCons(sum([c[0]*c[1] for c in cons]) <= cw)
 
     # [ (d, ywc), ... ]
     obj_1 = [
-        ( d_m[c_id][w_id], ywc[c_id][w_id] ) 
-        for c_id in range(l_c) for w_id in range(l_w)
+        ( d_m[c.index][w.index], ywc[c.index][w.index] ) 
+        for c in customers for w in facilities
     ]
 
     obj_2 = [ 
-        ( facilities[w_id].setup_cost, xw[w_id] ) 
-        for w_id in range(l_w)
+        ( facilities[w.index].setup_cost, xw[w.index] ) 
+        for w in facilities
     ]
-    print(obj_2)
-
 
     model.setObjective(sum([o[0]*o[1] for o in obj_1+obj_2]),
         sense = 'minimize',
         clear = 'true' 
     )	
-    model.writeProblem('facility_model.lp')
     return model, {'xw': xw, 'ywc':ywc}
 
-def solve_it(input_data):
+def parse_input(input_data):
     # parse the input
     lines = input_data.split('\n')
 
@@ -97,13 +121,13 @@ def solve_it(input_data):
     for i in range(facility_count+1, facility_count+1+customer_count):
         parts = lines[i].split()
         customers.append(Customer(i-1-facility_count, int(parts[0]), Point(float(parts[1]), float(parts[2]))))
+    
+    return facilities, customers
 
-    d_m = build_distances_matrix(facilities, customers)
-    facility_m, variables = build_model(facilities, customers, d_m)
-    get_solution(facility_m, variables)
-
+def get_trivial_solution(facilities, customers):
     # build a trivial solution
     # pack the facilities one by one until all the customers are served
+    optimal = False
     solution = [-1]*len(customers)
     capacity_remaining = [f.capacity for f in facilities]
 
@@ -127,11 +151,28 @@ def solve_it(input_data):
     for customer in customers:
         obj += length(customer.location, facilities[solution[customer.index]].location)
 
+    return obj, solution, optimal
+
+def format_solution(obj, solution, optimal):
     # prepare the solution in the specified output format
-    output_data = '%.2f' % obj + ' ' + str(0) + '\n'
+    output_data = '%.2f' % obj + ' ' + str(optimal) + '\n'
     output_data += ' '.join(map(str, solution))
 
     return output_data
+
+def solve_it(input_data):
+    facilities, customers = parse_input(input_data)
+    
+    d_m = build_distances_matrix(facilities, customers)
+    facility_m, variables = build_model(facilities, customers, d_m)
+
+    obj, solution, optimal = get_solution(facilities, customers, facility_m, variables)
+    
+    if solution == None:
+        obj, solution, optimal = get_trivial_solution(facilities, customers)
+
+    return format_solution(obj, solution, optimal)
+    
 
 
 import sys

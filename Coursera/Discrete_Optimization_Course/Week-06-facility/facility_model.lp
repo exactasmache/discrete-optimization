@@ -1,7 +1,7 @@
 \ SCIP STATISTICS
 \   Problem name     : Facility
 \   Variables        : 15 (15 binary, 0 integer, 0 implicit integer, 0 continuous)
-\   Constraints      : 16
+\   Constraints      : 19
 \   Obj. scale       : 1
 \   Obj. offset      : 0
 Minimize
@@ -25,6 +25,9 @@ Subject to
  c14: +1 y03 -1 x0 <= +0
  c15: +1 y13 -1 x1 <= +0
  c16: +1 y23 -1 x2 <= +0
+ c17: +50 y00 +50 y01 +75 y02 +75 y03 <= +100
+ c18: +50 y10 +50 y11 +75 y12 +75 y13 <= +100
+ c19: +50 y20 +50 y21 +75 y22 +75 y23 <= +500
 Bounds
  0 <= x0 <= 1
  0 <= x1 <= 1
