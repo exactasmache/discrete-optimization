@@ -19,10 +19,12 @@ def get_solution(facilities, customers, cpx, d_m):
     optimal = 0
     
     # CPLEX Parameters
-    cpx.write('facility_model.lp', filetype='lp')   # Write LP model to a file
-    # cpx.set_results_stream('output', fn=None)     # Hide output
-    # cpx.parameters.tune.timelimit.set(1)            # Timelimit in seconds
-    cpx.parameters.timelimit.set(10)
+    # cpx.write('facility_model.lp', filetype='lp')   # Write LP model to a file
+    cpx.set_results_stream('output', fn=None)       # Hide output
+    cpx.parameters.timelimit.set(180)               # Timelimit in seconds
+    cpx.parameters.mip.tolerances.absmipgap.set(0)  # Absolute MIP gap tolerance
+    cpx.parameters.mip.tolerances.mipgap.set(0)     # Relative MIP gap tolerance
+
 
     cpx.solve()
     status = cpx.solution.get_status_string()
@@ -31,7 +33,7 @@ def get_solution(facilities, customers, cpx, d_m):
         return get_trivial_solution(facilities, customers)
     
     # I asume that when the solution falls bellow the tolerance parameter it's optimal.
-    if status == 'integer optimal solution' or 'integer optimal, tolerance':
+    if status == 'integer optimal solution':
         optimal = 1
       
     obj = cpx.solution.get_objective_value()
@@ -46,11 +48,16 @@ def get_solution(facilities, customers, cpx, d_m):
     #     for c in customers for w in facilities]
     # )
     # print(calc_objective)
+    # with open('solution', 'w') as f:
+    #     for n in cpx.variables.get_names():
+    #         val = cpx.solution.get_values(n)
+    #         rval = round(val)
+    #         f.write('{} = {}     {}\n'.format(n, val, rval))
 
     solution = [-1] * len(customers)
     for c in customers:
         for w in facilities:
-            if int(cpx.solution.get_values('y{}_{}'.format(w.index, c.index))) == 1:
+            if int(round(cpx.solution.get_values('y{}_{}'.format(w.index, c.index)))) == 1:
                 solution[c.index] = w.index
 
     return obj, solution, optimal
@@ -196,7 +203,10 @@ def solve_it(input_data):
     d_m = build_distances_matrix(facilities, customers)
     facility_m = build_model(facilities, customers, d_m)
 
-    obj, solution, optimal = get_solution(facilities, customers, facility_m, d_m)
+    if len(customers) > 1000:
+        obj, solution, optimal = get_trivial_solution(facilities, customers)
+    else:
+        obj, solution, optimal = get_solution(facilities, customers, facility_m, d_m)
 
     return format_solution(obj, solution, optimal)
 
